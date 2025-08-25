@@ -1,0 +1,55 @@
+name: Render video
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "assets/**"
+      - ".github/workflows/render-video.yml"
+      - "generate_griyata_video.py"
+      - "requirements.txt"
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Ensure ffmpeg (for mobile optimize & 720p export)
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+
+      - name: Render 1080p video
+        run: |
+          mkdir -p outputs
+          python generate_griyata_video.py --out outputs/griyata_promo.mp4
+
+      - name: Mobile optimize (faststart)
+        run: |
+          ffmpeg -y -i outputs/griyata_promo.mp4 -c copy -movflags +faststart outputs/griyata_promo_mobile.mp4
+
+      - name: Generate 720p version
+        run: |
+          ffmpeg -y -i outputs/griyata_promo.mp4 -vf "scale=-2:720" -c:v libx264 -crf 20 -preset veryfast -pix_fmt yuv420p -c:a aac -b:a 160k -movflags +faststart outputs/griyata_promo_720p.mp4
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: griyata-promo-${{ github.run_id }}
+          path: outputs/*.mp4
+          if-no-files-found: error
